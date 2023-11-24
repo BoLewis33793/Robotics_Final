@@ -29,14 +29,14 @@ class MazeSolver:
             self.target_yaw_angle = (yaw_angle + 1.5708) # 1.5708 radians is approximately 90 degrees
 
         if self.move_forward:
-            self.twist.linear.x = 0.3
-            self.twist.angular.z = 0.25 * (0.4 - self.right_distance)
+            self.twist.linear.x = 0.2
+            self.twist.angular.z = 0.3 * (0.4 - self.right_distance)
         elif self.turn_left and not rospy.is_shutdown():
             orientation_quaternion = msg.pose.pose.orientation
             orientation_euler = euler_from_quaternion([orientation_quaternion.x, orientation_quaternion.y, orientation_quaternion.z, orientation_quaternion.w])
             yaw_angle = orientation_euler[2]
             twist_cmd = Twist()
-            angular_tolerance = 0.06 # Set a tolerance for stopping rotation
+            angular_tolerance = 0.05 # Set a tolerance for stopping rotation
             if abs(self.target_yaw_angle - yaw_angle) > angular_tolerance:
                 print("target yaw: ", self.target_yaw_angle)
                 print("yaw: ", yaw_angle)
