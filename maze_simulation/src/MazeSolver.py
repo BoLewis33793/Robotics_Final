@@ -5,6 +5,7 @@ from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from tf.transformations import euler_from_quaternion
 from nav_msgs.msg import Odometry
+import math
 
 class MazeSolver:
     def __init__(self):
@@ -14,9 +15,10 @@ class MazeSolver:
         self.sub_odom = rospy.Subscriber('/odom', Odometry, self.odom_callback)
         self.rate = rospy.Rate(10)  # 10 Hz
         self.front_distance = None
+        self.right_distance = None
         self.twist = Twist()
         self.turn_left = False
-        self.turn_right = False
+        self.move_forward = False
         self.target_yaw_angle = None
 
     def odom_callback(self, msg):
@@ -24,13 +26,17 @@ class MazeSolver:
             orientation_quaternion = msg.pose.pose.orientation
             orientation_euler = euler_from_quaternion([orientation_quaternion.x, orientation_quaternion.y, orientation_quaternion.z, orientation_quaternion.w])
             yaw_angle = orientation_euler[2]
-            self.target_yaw_angle = yaw_angle + 1.5708  # 1.5708 radians is approximately 90 degrees
-        if self.turn_left and not rospy.is_shutdown():
+            self.target_yaw_angle = (yaw_angle + 1.5708) # 1.5708 radians is approximately 90 degrees
+
+        if self.move_forward:
+            self.twist.linear.x = 0.3
+            self.twist.angular.z = 0.25 * (0.4 - self.right_distance)
+        elif self.turn_left and not rospy.is_shutdown():
             orientation_quaternion = msg.pose.pose.orientation
             orientation_euler = euler_from_quaternion([orientation_quaternion.x, orientation_quaternion.y, orientation_quaternion.z, orientation_quaternion.w])
             yaw_angle = orientation_euler[2]
             twist_cmd = Twist()
-            angular_tolerance = 0.05  # Set a tolerance for stopping rotation
+            angular_tolerance = 0.06 # Set a tolerance for stopping rotation
             if abs(self.target_yaw_angle - yaw_angle) > angular_tolerance:
                 print("target yaw: ", self.target_yaw_angle)
                 print("yaw: ", yaw_angle)
@@ -41,6 +47,7 @@ class MazeSolver:
                 print("1 turn completed")
                 self.pub.publish(Twist())  # Stop the robot
                 self.turn_left = False
+                
 
 
 
@@ -51,16 +58,12 @@ class MazeSolver:
             left_distance = scan_msg.ranges[90]
             back_distance = scan_msg.ranges[180]
             self.front_distance = scan_msg.ranges[0]
-            if self.right_distance > 0.4 and not rospy.is_shutdown():
-                self.right_distance = scan_msg.ranges[270]
-                self.twist.linear.x = 0.0
-                self.turn_right = True
-                print(self.turn_right)
-                return  # Add a break statement to exit the loop
+
             # when a wall is detected in front
-            elif self.front_distance < 0.4 and not rospy.is_shutdown():
+            if self.front_distance < 0.6 and not rospy.is_shutdown():
                 self.front_distance = scan_msg.ranges[0]
                 self.twist.linear.x = 0.0
+                self.move_forward = False
                 self.turn_left = True
                 print(self.turn_left)
                 return  # Add a break statement to exit the loop
@@ -68,9 +71,7 @@ class MazeSolver:
             # when a wall to the right and no wall in front
             elif self.front_distance > 0.4 and not rospy.is_shutdown():
                 self.front_distance = scan_msg.ranges[0]
-                self.twist.linear.x = 0.2  # Move forward
-                # self.pub.publish(self.twist)
-                rospy.sleep(0.1)  # Sleep for a short duration to control the loop rate
+                self.move_forward = True
 
     def run(self):
         while not rospy.is_shutdown():

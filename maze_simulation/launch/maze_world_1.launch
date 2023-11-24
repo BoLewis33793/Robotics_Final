@@ -3,7 +3,7 @@
   <arg name="x_pos" default="-3"/>
   <arg name="y_pos" default="3"/>
   <arg name="z_pos" default="0.0"/>
-  <arg name="desired_yaw" default="-1.5708"/>
+  <arg name="desired_yaw" default="-1.57079632679"/>
 
 
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
