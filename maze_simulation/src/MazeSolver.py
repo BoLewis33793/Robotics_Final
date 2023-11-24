@@ -16,6 +16,7 @@ class MazeSolver:
         self.front_distance = None
         self.twist = Twist()
         self.turn_left = False
+        self.turn_right = False
         self.target_yaw_angle = None
 
     def odom_callback(self, msg):
@@ -46,13 +47,18 @@ class MazeSolver:
 
     def scan_callback(self, scan_msg):
         if not self.turn_left:
-            right_distance = scan_msg.ranges[270]
+            self.right_distance = scan_msg.ranges[270]
             left_distance = scan_msg.ranges[90]
             back_distance = scan_msg.ranges[180]
             self.front_distance = scan_msg.ranges[0]
-        
+            if self.right_distance > 0.4 and not rospy.is_shutdown():
+                self.right_distance = scan_msg.ranges[270]
+                self.twist.linear.x = 0.0
+                self.turn_right = True
+                print(self.turn_right)
+                return  # Add a break statement to exit the loop
             # when a wall is detected in front
-            if self.front_distance < 0.4 and not rospy.is_shutdown():
+            elif self.front_distance < 0.4 and not rospy.is_shutdown():
                 self.front_distance = scan_msg.ranges[0]
                 self.twist.linear.x = 0.0
                 self.turn_left = True
