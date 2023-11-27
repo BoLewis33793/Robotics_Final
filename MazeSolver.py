@@ -58,7 +58,7 @@ class MazeSolver:
                 print("target yaw: ", self.target_yaw_angle_left)
                 print("yaw: ", yaw_angle)
                 # Calculate angular velocity based on the difference between current and target yaw angles
-                twist_cmd.angular.z = 0.3 * (self.target_yaw_angle_left - yaw_angle)
+                twist_cmd.angular.z = 0.3 # * (self.target_yaw_angle_left - yaw_angle)
                 self.pub.publish(twist_cmd)
             else:
                 print("1 turn completed")
@@ -76,7 +76,7 @@ class MazeSolver:
                 # Calculate angular velocity based on the difference between current and target yaw angles
                 print("target yaw: ", self.target_yaw_angle_right)
                 print("yaw: ", yaw_angle)
-                twist_cmd.angular.z = 0.3 # * (self.target_yaw_angle_right - yaw_angle)
+                twist_cmd.angular.z = -0.3 # * (self.target_yaw_angle_right - yaw_angle)
                 self.pub.publish(twist_cmd)
             else:
                 print("1 turn completed")
@@ -106,6 +106,34 @@ class MazeSolver:
                 self.twist.linear.x = 0.0
                 self.move_forward = False
                 self.turn_right = True
+                return
+            
+            elif self.front_distance > 1 and self.right_distance > 1 and self.left_distance < 0.6 and not rospy.is_shutdown():
+                self.front_distance = scan_msg.ranges[0]
+
+                # Set the duration to move forward in seconds
+                move_forward_duration = rospy.Duration(5.0)  # Adjust the duration as needed
+
+                # Get the current time
+                start_time = rospy.Time.now()
+
+                while not rospy.is_shutdown():
+                    # Calculate the elapsed time
+                    elapsed_time = rospy.Time.now() - start_time
+
+                    if elapsed_time < move_forward_duration:
+                        # Move forward
+                        self.twist.linear.x = 0.2  # Adjust the linear velocity as needed
+                    else:
+                        # Stop moving forward
+                        self.twist.linear.x = 0.0
+                        self.move_forward = False
+                        self.turn_right = True
+                        break  # Exit the loop when the desired duration is reached
+
+                    # Sleep for a short duration to control the loop rate
+                    rospy.sleep(0.1)
+    
                 return
 
             # when a wall to the right and no wall in front
