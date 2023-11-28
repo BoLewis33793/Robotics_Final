@@ -49,7 +49,9 @@ class MazeSolver:
 
             # elif self.target_yaw_angle_left :
             self.target_yaw_angle_right = (yaw_angle - 1.5708) # 1.5708 radians is approximately 90 degrees
-            if self.target_yaw_angle_right < -3.14:
+            if self.target_yaw_angle_right < -3.14 and self.target_yaw_angle_right > -4:
+                self.target_yaw_angle_right = math.pi
+            elif self.target_yaw_angle_right < -4:
                 self.target_yaw_angle_right = math.pi/2
             elif self.target_yaw_angle_right > -2.2 and self.target_yaw_angle_right < -1:
                 self.target_yaw_angle_right = -1*math.pi/2
@@ -67,11 +69,12 @@ class MazeSolver:
         # moving forward
         if self.move_forward:
             self.twist.linear.x = 0.2
-            if self.right_distance < 0.6:
-                    self.twist.angular.z = 0.2 * (0.4 - self.right_distance)
-            elif self.left_distance < 0.6:
-                    self.twist.angular.z = -0.2 * (0.4 - self.left_distance)
-
+            if self.right_distance < 0.4:
+                    self.twist.angular.z = 0.1
+            elif self.left_distance < 0.4:
+                    self.twist.angular.z = -0.1
+            else:
+                self.twist.angular.z = 0.0
         # turning left
         elif self.turn_left and not rospy.is_shutdown():
             orientation_quaternion = msg.pose.pose.orientation
@@ -82,7 +85,7 @@ class MazeSolver:
             print(self.target_yaw_angle_left)
             if abs(self.target_yaw_angle_left - yaw_angle) > angular_tolerance:
                 # Calculate angular velocity based on the difference between current and target yaw angles
-                twist_cmd.angular.z = 0.5 # * (self.target_yaw_angle_left - yaw_angle)
+                twist_cmd.angular.z = 0.2 # * (self.target_yaw_angle_left - yaw_angle)
                 self.pub.publish(twist_cmd)
             else:
                 print("1 turn completed")
@@ -101,7 +104,7 @@ class MazeSolver:
                 # Calculate angular velocity based on the difference between current and target yaw angles
                 print("target yaw: ", self.target_yaw_angle_right)
                 print("yaw: ", yaw_angle)
-                twist_cmd.angular.z = -0.3 # * (self.target_yaw_angle_right - yaw_angle)
+                twist_cmd.angular.z = -0.2 # * (self.target_yaw_angle_right - yaw_angle)
                 self.pub.publish(twist_cmd)
             else:
                 print("1 turn completed")
@@ -134,7 +137,7 @@ class MazeSolver:
 
 
             # when a wall is detected in front and on the right --- turn left
-            if self.front_distance < 0.6 and self.right_distance < 1 and not rospy.is_shutdown():
+            if self.front_distance < 0.55 and  self.right_distance < 1 and not rospy.is_shutdown():
                 self.front_distance = scan_msg.ranges[0]
                 self.twist.linear.x = 0.0
                 self.move_forward = False
@@ -153,7 +156,7 @@ class MazeSolver:
 
                 # Drive forward for 3 seconds
                 start_time = time.time()
-                while time.time() - start_time < 2 and not rospy.is_shutdown():
+                while time.time() - start_time < 1.5 and not rospy.is_shutdown():
                     twist_cmd = Twist()
                     twist_cmd.linear.x = 0.2  # Adjust linear velocity as needed
                     self.pub.publish(twist_cmd)
