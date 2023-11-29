@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
+from std_msgs.msg import Float64
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from tf.transformations import euler_from_quaternion
@@ -14,6 +15,7 @@ class MazeSolver:
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
         self.sub_scan = rospy.Subscriber('/scan', LaserScan, self.scan_callback)
         self.sub_odom = rospy.Subscriber('/odom', Odometry, self.odom_callback)
+        self.sub_map = rospy.Subscriber('/map_coverage_percentage', Float64, self.map_callback)
         self.rate = rospy.Rate(10)  # 10 Hz
         self.front_distance = None
         self.right_distance = None
@@ -23,7 +25,14 @@ class MazeSolver:
         self.turn_right_wall = False
         self.move_forward = False
         self.target_yaw_angle = None
+        self.exited = False
+        self.explorer = False
 
+            
+    def map_callback(self, msg):
+        if msg.data < 37 and self.explorer:
+            print("completed")
+            rospy.signal_shutdown("Both tasks achieved. Shutting Down")
     def odom_callback(self, msg):
         if not self.turn_left and not self.turn_right and not self.turn_right_wall:
             orientation_quaternion = msg.pose.pose.orientation
@@ -68,62 +77,81 @@ class MazeSolver:
             
         # moving forward
         if self.move_forward:
+            print("moving forward")
             self.twist.linear.x = 0.2
-            if self.right_distance < 0.4:
-                    self.twist.angular.z = 0.1
-            elif self.left_distance < 0.4:
-                    self.twist.angular.z = -0.1
-            else:
-                self.twist.angular.z = 0.0
+            if self.right_distance < 0.7:
+                    self.twist.angular.z = 0.25 * (0.4 - self.right_distance)
+            # elif self.left_distance < 0.6:
+            #         self.twist.angular.z = -0.2 * (0.4 - self.left_distance)
+
         # turning left
         elif self.turn_left and not rospy.is_shutdown():
+            print("turning left")
             orientation_quaternion = msg.pose.pose.orientation
             orientation_euler = euler_from_quaternion([orientation_quaternion.x, orientation_quaternion.y, orientation_quaternion.z, orientation_quaternion.w])
             yaw_angle = orientation_euler[2]
-            twist_cmd = Twist()
             angular_tolerance = 0.05 # Set a tolerance for stopping rotation
-            print(self.target_yaw_angle_left)
             if abs(self.target_yaw_angle_left - yaw_angle) > angular_tolerance:
                 # Calculate angular velocity based on the difference between current and target yaw angles
-                twist_cmd.angular.z = 0.2 # * (self.target_yaw_angle_left - yaw_angle)
-                self.pub.publish(twist_cmd)
+                self.twist.angular.z = 0.5
             else:
                 print("1 turn completed")
-                self.pub.publish(Twist())  # Stop the robot
+                self.twist.linear.x = 0
+                self.twist.angular.z = 0
                 self.turn_left = False
 
         # turning right      
-        elif self.turn_right and not rospy.is_shutdown():
+        elif self.turn_right and not self.exited and not rospy.is_shutdown():
             print("Turning Right")
+            # print("right: ", self.right_distance)
+            # print("front: ", self.front_distance)
             orientation_quaternion = msg.pose.pose.orientation
             orientation_euler = euler_from_quaternion([orientation_quaternion.x, orientation_quaternion.y, orientation_quaternion.z, orientation_quaternion.w])
             yaw_angle = orientation_euler[2]
-            twist_cmd = Twist()
             angular_tolerance = 0.05 # Set a tolerance for stopping rotation
             if abs(self.target_yaw_angle_right - yaw_angle) > angular_tolerance:
                 # Calculate angular velocity based on the difference between current and target yaw angles
                 print("target yaw: ", self.target_yaw_angle_right)
                 print("yaw: ", yaw_angle)
-                twist_cmd.angular.z = -0.2 # * (self.target_yaw_angle_right - yaw_angle)
-                self.pub.publish(twist_cmd)
+                self.twist.angular.z = -0.5          
             else:
+                self.twist.angular.z = 0    
                 print("1 turn completed")
-                self.pub.publish(Twist())
-                # Set the duration to move forward in seconds
                 rate = rospy.Rate(10)  # 10 Hz
 
                 # Drive forward for 3 seconds
                 start_time = time.time()
-                while time.time() - start_time < 4.5 and not rospy.is_shutdown():
-                    twist_cmd = Twist()
-                    twist_cmd.linear.x = 0.2  # Adjust linear velocity as needed
-                    self.pub.publish(twist_cmd)
-                    self.rate.sleep()
+                while time.time() - start_time < 4 and not rospy.is_shutdown():
+                    self.twist.linear.x = 0.2
 
                 # Stop the robot
-                twist_cmd = Twist()
-                self.pub.publish(twist_cmd)
+                self.twist.linear.x = 0
+                self.twist.angular.z = 0
                 self.turn_right = False
+
+        elif self.exited:
+            orientation_quaternion = msg.pose.pose.orientation
+            orientation_euler = euler_from_quaternion([orientation_quaternion.x, orientation_quaternion.y, orientation_quaternion.z, orientation_quaternion.w])
+            yaw_angle = orientation_euler[2]
+            angular_tolerance = 0.05 # Set a tolerance for stopping rotation
+            if abs(math.pi/2 - yaw_angle) > angular_tolerance:
+                # Calculate angular velocity based on the difference between current and target yaw angles
+                self.twist.angular.z = 0.5 # * (self.target_yaw_angle_left - yaw_angle)
+            else:
+                self.twist.angular.z = 0 # * (self.target_yaw_angle_left - yaw_angle)
+                print("1 turn completed")
+                self.pub.publish(Twist())  # Stop the robot
+                # self.turn_left = False
+                # Drive forward for 3 seconds
+                start_time = time.time()
+                while time.time() - start_time < 4 and not rospy.is_shutdown():
+                   self.twist.linear.x = 0.2
+                print("out of while")
+                # Stop the robot
+                self.twist.linear.x = 0
+                self.twist.angular.z = 0
+                self.explorer = True
+                self.exited = False
 
     def scan_callback(self, scan_msg):
         
@@ -134,40 +162,46 @@ class MazeSolver:
             self.front_distance = scan_msg.ranges[0]
             print("right: ", self.right_distance)
             print("front: ", self.front_distance)
+            print("left: ", self.left_distance)
+
 
 
             # when a wall is detected in front and on the right --- turn left
-            if self.front_distance < 0.55 and  self.right_distance < 1 and not rospy.is_shutdown():
-                self.front_distance = scan_msg.ranges[0]
-                self.twist.linear.x = 0.0
+            if self.front_distance < 0.6 and self.right_distance < 1 and not rospy.is_shutdown():
                 self.move_forward = False
-                print("turning left")
-                self.turn_left = True
+                self.twist.linear.x = 0
+                self.twist.angular.z = 0
+                self.front_distance = scan_msg.ranges[0]
                 print("front distance: ", self.front_distance)
                 print("right distance: ", self.right_distance)
-                print(self.turn_left)
+                self.turn_left = True
 
+            elif (self.left_distance == math.inf and self.front_distance == math.inf and self.right_distance == math.inf) or (self.left_distance == math.inf and self.front_distance == math.inf and self.right_distance > 1):
+                self.move_forward = False
+                self.twist.linear.x = 0
+                self.twist.angular.z = 0
+                print("exited")
+                self.exited = True
+                
             # when a wall not on the right -- turn right
             elif self.right_distance > 1 and not rospy.is_shutdown():
+                self.move_forward = False
+                self.twist.linear.x = 0
+                self.twist.angular.z = 0
                 self.front_distance = scan_msg.ranges[0]
+                print(self.front_distance)
 
                 # Set the duration to move forward in seconds
                 rate = rospy.Rate(10)  # 10 Hz
 
                 # Drive forward for 3 seconds
                 start_time = time.time()
-                while time.time() - start_time < 1.5 and not rospy.is_shutdown():
-                    twist_cmd = Twist()
-                    twist_cmd.linear.x = 0.2  # Adjust linear velocity as needed
-                    self.pub.publish(twist_cmd)
-                    self.rate.sleep()
-
+                while time.time() - start_time < 1 and not rospy.is_shutdown():
+                    self.twist.linear.x = 0.2
                 # Stop the robot
-                twist_cmd = Twist()
-                self.pub.publish(twist_cmd)
-                self.move_forward = False
+                self.twist.linear.x = 0
+                self.twist.angular.z = 0
                 self.turn_right = True
-    
                 return
 
             # when a wall to the right and no wall in front --- move forward
